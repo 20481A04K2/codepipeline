@@ -1,58 +1,27 @@
-steps:
-  # Step 1: Build and publish the image using Buildpacks
-  - name: 'gcr.io/k8s-skaffold/pack'
-    entrypoint: 'pack'
-    args:
-      [
-        'build',
-        '--builder=gcr.io/buildpacks/builder',
-        '--publish',
-        'asia-south1-docker.pkg.dev/mythic-beanbag-463309-e9/my-repo/app:${_BUILD_ID}'
-      ]
-    env:
-      - 'GOOGLE_ENTRYPOINT=python app.py'
-    id: Build and package app
+version: 0.2
 
-  # Step 2: Apply Cloud Deploy pipeline and targets
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
-    entrypoint: 'gcloud'
-    args:
-      [
-        "deploy", "apply",
-        "--file=clouddeploy.yaml",
-        "--region=${_REGION}",
-        "--project=mythic-beanbag-463309-e9"
-      ]
-    id: Apply deploy config
+env:
+  variables:
+    AWS_DEFAULT_REGION: "ap-south-1"
+    REPOSITORY_URI: "337243655832.dkr.ecr.ap-south-1.amazonaws.com/simple-docker-service"
+    IMAGE_TAG: "latest"
 
-  # Step 2.5: Wait for resources to be ready
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
-    entrypoint: 'bash'
-    args:
-      - -c
-      - |
-        echo "Waiting for Cloud Deploy resources to become available..."
-        sleep 60
-    id: Wait for pipeline propagation
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
 
-  # Step 3: Create release and trigger rollout
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
-    entrypoint: 'gcloud'
-    args:
-      [
-        'deploy', 'releases', 'create', '${_BUILD_ID}',
-        '--delivery-pipeline', 'cloudrun-python-pipeline',
-        '--region', '${_REGION}',
-        '--images', 'app=asia-south1-docker.pkg.dev/mythic-beanbag-463309-e9/my-repo/app:${_BUILD_ID}',
-        '--project=mythic-beanbag-463309-e9'
-      ]
-    id: Create release
+  build:
+    commands:
+      - echo Building Docker image...
+      - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
 
-options:
-  logging: CLOUD_LOGGING_ONLY
+  post_build:
+    commands:
+      - echo Pushing Docker image to ECR...
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
 
-substitutions:
-  _REGION: asia-south1
-  _BUILD_ID: rel-20240624-001
-
-serviceAccount: 956387703564-compute@developer.gserviceaccount.com
+artifacts:
+  files:
+    - '**/*'
