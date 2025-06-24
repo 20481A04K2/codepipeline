@@ -1,11 +1,10 @@
-FROM python:3.11-slim
+FROM public.ecr.aws/docker/library/python:3.11-slim
 
 WORKDIR /app
 
-COPY app.py .
-
+# Install dependencies directly
 RUN pip install flask
 
-EXPOSE 8080
+COPY app.py .
 
 CMD ["python", "app.py"]
